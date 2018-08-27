@@ -61,19 +61,27 @@ options:
     read_only:
         description:
             - If the volume is read only - default: False
-        required: false                
+        required: false
     accountable_entity_type:
         description:
             - Accountable entity type (user/group) - default: user
-        required: false 
+        required: false
     accountable_entity_name:
         description:
             - Name of accountable entity - default: User which executes the script
-        required: false 
+        required: false
+    user:
+        description:
+            - List of user:allowMask separated by spaces, use comma to separate permissions - default: None
+        required: false
+    group:
+        description:
+            - List of group:allowMask separated by spaces, use comma to separate permissions - default: None
+        required: false
     snapshot_schedule_name:
         description:
             - Name of snapshot schedule. - default: Empty string which is no schedule
-        required: false 
+        required: false
 author:
     - Carsten Hufe chufe@mapr.com
 '''
@@ -94,9 +102,11 @@ EXAMPLES = '''
     hard_quota_in_mb: 1024
     accountable_entity_type: user
     accountable_entity_name: mapr
+    user: mapr:fc user:fc
+    group: mapr:fc group:fc
     read_only: False
     snapshot_schedule_name: Normal Data
-    
+
 # hard_quota and soft_quota = 0 means unlimited
 '''
 
@@ -125,6 +135,8 @@ def run_module():
         write_ace=dict(type='str', required=False, default='p'),
         accountable_entity_type=dict(type='str', required=False, default='user'),
         accountable_entity_name=dict(type='str', required=False, default=getpass.getuser()),
+        user=dict(type='str', required=False, default='none'),
+        group=dict(type='str', required=False, default='none'),
         min_replication=dict(type='int', required=False, default=2),
         replication=dict(type='int', required=False, default=3),
         soft_quota_in_mb=dict(type='int', required=False, default='0'),
@@ -166,6 +178,8 @@ def run_module():
         write_ace = module.params['write_ace'],
         accountable_entity_type = module.params['accountable_entity_type'],
         accountable_entity_name = module.params['accountable_entity_name'],
+        user = module.params['user'],
+        group = module.params['group'],
         min_replication = module.params['min_replication'],
         replication = module.params['replication'],
         soft_quota_in_mb = module.params['soft_quota_in_mb'],
@@ -188,6 +202,8 @@ def run_module():
             write_ace = volume_info['volumeAces']['writeAce'].encode('ascii','ignore'),
             accountable_entity_type = "user" if int(volume_info['aetype']) == 0 else "group",
             accountable_entity_name = volume_info['aename'].encode('ascii','ignore'),
+            user = volume_info['user'].encode('ascii','ignore'),
+            group = volume_info['group'].encode('ascii','ignore'),
             min_replication = int(volume_info['minreplicas']),
             replication = int(volume_info['numreplicas']),
             soft_quota_in_mb = int(volume_info['advisoryquota']),
@@ -267,6 +283,10 @@ def execute_volume_changes(volume_exists, old_values, new_values, schedule_id):
         volume_command += " -readonly " + ("1" if new_values['read_only'] else "0")
         volume_command += " -aetype " + ("0" if new_values['accountable_entity_type'] == "user" else "1")
         volume_command += " -ae " + new_values['accountable_entity_name']
+        if new_values['user']:
+            volume_command += " -user " + new_values['user']
+        if new_values['group']:
+            volume_command += " -group " + new_values['group']
         if schedule_id != "0":
             volume_command += " -schedule " + schedule_id
         subprocess.check_call(volume_command, shell=True)
@@ -282,6 +302,10 @@ def execute_volume_changes(volume_exists, old_values, new_values, schedule_id):
         volume_command += " -readonly " + ("1" if new_values['read_only'] else "0")
         volume_command += " -aetype " + ("0" if new_values['accountable_entity_type'] == "user" else "1")
         volume_command += " -ae " + new_values['accountable_entity_name']
+        if new_values['user']:
+            volume_command += " -user " + new_values['user']
+        if new_values['group']:
+            volume_command += " -group " + new_values['group']
         subprocess.check_call(volume_command, shell=True)
         if new_values['topology'] != old_values['topology']:
             subprocess.check_call("maprcli volume move -name " + new_values['name'] + " -topology " + new_values['topology'], shell=True)
